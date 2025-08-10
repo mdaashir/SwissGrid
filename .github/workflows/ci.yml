@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  push:
+    branches: [main, staging, pre-staging, base]
+  pull_request:
+    branches: [main, staging, pre-staging]
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+
+    services:
+      mongodb:
+        image: mongo:7.0
+        env:
+          MONGO_INITDB_ROOT_USERNAME: root
+          MONGO_INITDB_ROOT_PASSWORD: example
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd mongo
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install client dependencies
+        run: npm ci
+        working-directory: ./client
+
+      - name: Install server dependencies
+        run: npm ci
+        working-directory: ./server
+
+      - name: Run client tests
+        run: npm test
+        working-directory: ./client
+
+      - name: Run server tests
+        run: npm test
+        working-directory: ./server
+        env:
+          MONGODB_URI: mongodb://root:example@localhost:27017/test?authSource=admin
+
+      - name: Build client
+        run: npm run build
+        working-directory: ./client
+
+      - name: Build server
+        run: npm run build
+        working-directory: ./server
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm ci --prefix client
+          npm ci --prefix server
+
+      - name: Lint client
+        run: npm run lint
+        working-directory: ./client
+        continue-on-error: true
+
+      - name: Check TypeScript (client)
+        run: npx tsc --noEmit
+        working-directory: ./client
+        continue-on-error: true
+
+      - name: Check TypeScript (server)
+        run: npx tsc --noEmit
+        working-directory: ./server
+        continue-on-error: true
