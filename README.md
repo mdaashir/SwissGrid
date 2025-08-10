@@ -195,3 +195,5 @@ Available npm scripts in root directory:
 ## 📄 License
 
 This project is licensed under the terms specified in the LICENSE file.
+
+# Test comment
