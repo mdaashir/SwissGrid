@@ -68,8 +68,8 @@ jobs:
         run: npm run build
         working-directory: ./server
 
-  lint:
-    name: Lint
+  lint-and-format:
+    name: Lint and Format
     runs-on: ubuntu-latest
 
     steps:
@@ -88,17 +88,21 @@ jobs:
           npm ci --prefix client
           npm ci --prefix server
 
+      - name: Check Prettier formatting
+        run: npm run format:check
+
       - name: Lint client
         run: npm run lint
         working-directory: ./client
-        continue-on-error: true
+
+      - name: Lint server
+        run: npm run lint
+        working-directory: ./server
 
       - name: Check TypeScript (client)
         run: npx tsc --noEmit
         working-directory: ./client
-        continue-on-error: true
 
       - name: Check TypeScript (server)
         run: npx tsc --noEmit
         working-directory: ./server
-        continue-on-error: true

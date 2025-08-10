@@ -16,6 +16,11 @@
         "test:client": "npm test --prefix client",
         "test:server": "npm test --prefix server",
         "test": "npm run test:client && npm run test:server",
+        "lint": "npm run lint --prefix client && npm run lint --prefix server",
+        "lint:fix": "npm run lint:fix --prefix client && npm run lint:fix --prefix server",
+        "format": "prettier --write \"**/*.{js,jsx,ts,tsx,json,css,md}\"",
+        "format:check": "prettier --check \"**/*.{js,jsx,ts,tsx,json,css,md}\"",
+        "prepare": "husky install",
         "clean": "rm -rf node_modules client/node_modules server/node_modules client/dist server/dist"
     },
     "engines": {
@@ -23,6 +28,16 @@
     },
     "devDependencies": {
         "@types/node": "^20.0.0",
+        "@typescript-eslint/eslint-plugin": "^7.2.0",
+        "@typescript-eslint/parser": "^7.2.0",
+        "eslint": "^8.57.0",
+        "eslint-config-prettier": "^9.1.0",
+        "eslint-plugin-import": "^2.29.1",
+        "eslint-plugin-jest": "^28.2.0",
+        "eslint-plugin-prettier": "^5.1.3",
+        "husky": "^9.0.11",
+        "lint-staged": "^15.2.2",
+        "prettier": "^3.2.5",
         "typescript": "^5.0.0"
     }
 }
