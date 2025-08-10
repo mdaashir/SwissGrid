@@ -1,0 +1,52 @@
+{
+    "name": "swiss-grid-monorepo",
+    "version": "1.0.0",
+    "description": "SwissGrid monorepo application",
+    "private": true,
+    "scripts": {
+        "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+        "dev:client": "cd client && npm run dev",
+        "dev:server": "cd server && npm run dev",
+        "build": "npm run build:client && npm run build:server",
+        "build:client": "cd client && npm run build",
+        "build:server": "cd server && npm run build",
+        "test": "npm run test:client && npm run test:server",
+        "test:client": "cd client && npm run test",
+        "test:server": "cd server && npm run test",
+        "lint": "npm run lint:client && npm run lint:server",
+        "lint:client": "cd client && npm run lint",
+        "lint:server": "cd server && npm run lint",
+        "lint:fix": "npm run lint:fix:client && npm run lint:fix:server",
+        "lint:fix:client": "cd client && npm run lint:fix",
+        "lint:fix:server": "cd server && npm run lint:fix",
+        "format": "npm run format:client && npm run format:server",
+        "format:client": "cd client && npm run format",
+        "format:server": "cd server && npm run format",
+        "format:check": "npm run format:check:client && npm run format:check:server",
+        "format:check:client": "cd client && npm run format:check",
+        "format:check:server": "cd server && npm run format:check",
+        "install:all": "npm install && cd client && npm install && cd ../server && npm install",
+        "clean": "rimraf client/dist client/node_modules server/dist server/node_modules node_modules",
+        "docker:up": "docker-compose up --build",
+        "docker:down": "docker-compose down",
+        "docker:logs": "docker-compose logs -f",
+        "prepare": "husky",
+        "pre-commit": "lint-staged",
+        "pre-commit:test": "lint-staged && npm test"
+    },
+    "devDependencies": {
+        "concurrently": "^9.2.0",
+        "husky": "^9.1.7",
+        "lint-staged": "^16.1.5",
+        "prettier": "^3.6.2",
+        "rimraf": "^6.0.1"
+    },
+    "workspaces": [
+        "client",
+        "server"
+    ],
+    "engines": {
+        "node": ">=18.0.0",
+        "npm": ">=8.0.0"
+    }
+}

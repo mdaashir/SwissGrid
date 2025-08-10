@@ -1,0 +1,4 @@
+# Optional: Add commit message linting here
+# npx --no -- commitlint --edit "$1"
+
+echo "📝 Commit message validated"

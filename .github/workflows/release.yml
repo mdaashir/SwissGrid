@@ -1,0 +1,327 @@
+name: 🏷️ Release Management
+
+on:
+    push:
+        tags:
+            - 'v*.*.*'
+    workflow_dispatch:
+        inputs:
+            version:
+                description: 'Release version (e.g., 1.0.0)'
+                required: true
+                type: string
+            release_type:
+                description: 'Type of release'
+                required: true
+                default: 'release'
+                type: choice
+                options:
+                    - release
+                    - prerelease
+
+env:
+    NODE_VERSION: '20.x'
+
+jobs:
+    # 🔍 Pre-release Checks
+    pre-release-checks:
+        name: 🔍 Pre-release Validation
+        runs-on: ubuntu-latest
+
+        outputs:
+            version: ${{ steps.version.outputs.version }}
+            is_prerelease: ${{ steps.version.outputs.is_prerelease }}
+
+        steps:
+            - name: 📥 Checkout repository
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
+            - name: 🏷️ Extract version info
+              id: version
+              run: |
+                  if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+                    VERSION="${{ github.event.inputs.version }}"
+                    IS_PRERELEASE="${{ github.event.inputs.release_type == 'prerelease' }}"
+                  else
+                    VERSION=${GITHUB_REF#refs/tags/v}
+                    IS_PRERELEASE=false
+                    if [[ $VERSION == *"alpha"* ]] || [[ $VERSION == *"beta"* ]] || [[ $VERSION == *"rc"* ]]; then
+                      IS_PRERELEASE=true
+                    fi
+                  fi
+
+                  echo "version=$VERSION" >> $GITHUB_OUTPUT
+                  echo "is_prerelease=$IS_PRERELEASE" >> $GITHUB_OUTPUT
+                  echo "Release version: $VERSION"
+                  echo "Is prerelease: $IS_PRERELEASE"
+
+            - name: 🟢 Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: ${{ env.NODE_VERSION }}
+
+            - name: 📦 Install dependencies
+              run: |
+                  npm install
+                  npm install --prefix client
+                  npm install --prefix server
+
+            - name: 🧪 Run full test suite
+              run: |
+                  npm run test:client
+                  npm run test:server
+
+            - name: 🔍 Security audit
+              run: |
+                  npm audit --audit-level moderate
+                  npm audit --prefix client --audit-level moderate
+                  npm audit --prefix server --audit-level moderate
+
+            - name: 🏗️ Build applications
+              run: |
+                  npm run build:client
+                  npm run build:server
+
+            - name: ✅ Validate build artifacts
+              run: |
+                  [ -d "client/dist" ] || { echo "Client build failed"; exit 1; }
+                  [ -d "server/dist" ] || { echo "Server build failed"; exit 1; }
+
+                  # Check for essential files
+                  [ -f "client/dist/index.html" ] || { echo "Client index.html missing"; exit 1; }
+                  [ -f "server/dist/index.js" ] || { echo "Server index.js missing"; exit 1; }
+
+    # 📝 Generate Release Notes
+    generate-release-notes:
+        name: 📝 Generate Release Notes
+        runs-on: ubuntu-latest
+        needs: pre-release-checks
+
+        outputs:
+            release_notes: ${{ steps.notes.outputs.release_notes }}
+
+        steps:
+            - name: 📥 Checkout repository
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
+            - name: 📝 Generate release notes
+              id: notes
+              run: |
+                  VERSION="${{ needs.pre-release-checks.outputs.version }}"
+
+                  # Get the latest tag before this one
+                  PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+                  if [ -z "$PREVIOUS_TAG" ]; then
+                    PREVIOUS_TAG=$(git rev-list --max-parents=0 HEAD)
+                  fi
+
+                  # Generate changelog
+                  echo "# 🚀 SwissGrid v$VERSION" > release-notes.md
+                  echo "" >> release-notes.md
+                  echo "## 📋 What's Changed" >> release-notes.md
+                  echo "" >> release-notes.md
+
+                  # Get commits since last tag
+                  git log $PREVIOUS_TAG..HEAD --oneline --pretty=format:"- %s (%an)" | \
+                    grep -E "(feat|fix|docs|style|refactor|perf|test|chore)" | \
+                    head -50 >> release-notes.md || echo "- Initial release" >> release-notes.md
+
+                  echo "" >> release-notes.md
+                  echo "## 🛠️ Technical Changes" >> release-notes.md
+                  echo "" >> release-notes.md
+                  echo "### 📊 Statistics" >> release-notes.md
+                  echo "- **Commits:** $(git rev-list $PREVIOUS_TAG..HEAD --count)" >> release-notes.md
+                  echo "- **Files changed:** $(git diff --name-only $PREVIOUS_TAG..HEAD | wc -l)" >> release-notes.md
+                  echo "- **Contributors:** $(git shortlog -sn $PREVIOUS_TAG..HEAD | wc -l)" >> release-notes.md
+
+                  echo "" >> release-notes.md
+                  echo "### 🏗️ Build Information" >> release-notes.md
+                  echo "- **Node.js:** ${{ env.NODE_VERSION }}" >> release-notes.md
+                  echo "- **Build Date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> release-notes.md
+                  echo "- **Commit SHA:** ${{ github.sha }}" >> release-notes.md
+
+                  # Read the release notes into output
+                  RELEASE_NOTES=$(cat release-notes.md)
+                  echo "release_notes<<EOF" >> $GITHUB_OUTPUT
+                  echo "$RELEASE_NOTES" >> $GITHUB_OUTPUT
+                  echo "EOF" >> $GITHUB_OUTPUT
+
+            - name: 📄 Upload release notes
+              uses: actions/upload-artifact@v4
+              with:
+                  name: release-notes
+                  path: release-notes.md
+
+    # 🏗️ Build Release Assets
+    build-release-assets:
+        name: 🏗️ Build Release Assets
+        runs-on: ubuntu-latest
+        needs: pre-release-checks
+
+        steps:
+            - name: 📥 Checkout repository
+              uses: actions/checkout@v4
+
+            - name: 🟢 Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: ${{ env.NODE_VERSION }}
+
+            - name: 📦 Install dependencies
+              run: |
+                  npm install
+                  npm install --prefix client
+                  npm install --prefix server
+
+            - name: 🏗️ Build for production
+              run: |
+                  NODE_ENV=production npm run build:client
+                  NODE_ENV=production npm run build:server
+
+            - name: 📦 Create release archives
+              run: |
+                  VERSION="${{ needs.pre-release-checks.outputs.version }}"
+
+                  # Create client archive
+                  cd client/dist
+                  tar -czf ../../swissgrid-client-v$VERSION.tar.gz .
+                  cd ../..
+
+                  # Create server archive
+                  cd server/dist
+                  tar -czf ../../swissgrid-server-v$VERSION.tar.gz .
+                  cd ../..
+
+                  # Create source archive
+                  git archive --format=tar.gz --prefix=swissgrid-v$VERSION/ HEAD > swissgrid-source-v$VERSION.tar.gz
+
+                  # Create deployment docker-compose
+                  cp docker-compose.yml swissgrid-docker-compose-v$VERSION.yml
+
+            - name: 🔍 Generate checksums
+              run: |
+                  VERSION="${{ needs.pre-release-checks.outputs.version }}"
+
+                  sha256sum swissgrid-*-v$VERSION.* > swissgrid-v$VERSION-checksums.txt
+                  cat swissgrid-v$VERSION-checksums.txt
+
+            - name: 📄 Upload release assets
+              uses: actions/upload-artifact@v4
+              with:
+                  name: release-assets
+                  path: |
+                      swissgrid-*.tar.gz
+                      swissgrid-*.yml
+                      swissgrid-*-checksums.txt
+
+    # 🐳 Build Release Docker Images
+    build-release-docker:
+        name: 🐳 Build Release Docker Images
+        runs-on: ubuntu-latest
+        needs: pre-release-checks
+
+        strategy:
+            matrix:
+                service: [client, server]
+
+        steps:
+            - name: 📥 Checkout repository
+              uses: actions/checkout@v4
+
+            - name: 🐳 Set up Docker Buildx
+              uses: docker/setup-buildx-action@v3
+
+            - name: 🔑 Login to Container Registry
+              uses: docker/login-action@v3
+              with:
+                  registry: ghcr.io
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: 🏷️ Extract metadata
+              id: meta
+              uses: docker/metadata-action@v5
+              with:
+                  images: ghcr.io/${{ github.repository }}-${{ matrix.service }}
+                  tags: |
+                      type=semver,pattern={{version}},value=v${{ needs.pre-release-checks.outputs.version }}
+                      type=semver,pattern={{major}}.{{minor}},value=v${{ needs.pre-release-checks.outputs.version }}
+                      type=semver,pattern={{major}},value=v${{ needs.pre-release-checks.outputs.version }}
+
+            - name: 🏗️ Build and push release image
+              uses: docker/build-push-action@v5
+              with:
+                  context: ./${{ matrix.service }}
+                  platforms: linux/amd64,linux/arm64
+                  push: true
+                  tags: ${{ steps.meta.outputs.tags }}
+                  labels: ${{ steps.meta.outputs.labels }}
+                  build-args: |
+                      VERSION=${{ needs.pre-release-checks.outputs.version }}
+                      BUILDTIME=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
+                      REVISION=${{ github.sha }}
+
+    # 🚀 Create GitHub Release
+    create-release:
+        name: 🚀 Create GitHub Release
+        runs-on: ubuntu-latest
+        needs:
+            [
+                pre-release-checks,
+                generate-release-notes,
+                build-release-assets,
+                build-release-docker,
+            ]
+
+        steps:
+            - name: 📥 Checkout repository
+              uses: actions/checkout@v4
+
+            - name: 📄 Download release assets
+              uses: actions/download-artifact@v4
+              with:
+                  name: release-assets
+                  path: ./release-assets
+
+            - name: 🚀 Create GitHub Release
+              uses: softprops/action-gh-release@v1
+              with:
+                  tag_name: v${{ needs.pre-release-checks.outputs.version }}
+                  name: SwissGrid v${{ needs.pre-release-checks.outputs.version }}
+                  body: ${{ needs.generate-release-notes.outputs.release_notes }}
+                  prerelease: ${{ needs.pre-release-checks.outputs.is_prerelease }}
+                  files: |
+                      release-assets/swissgrid-*.tar.gz
+                      release-assets/swissgrid-*.yml
+                      release-assets/swissgrid-*-checksums.txt
+                  generate_release_notes: false
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    # 📢 Post-release Actions
+    post-release:
+        name: 📢 Post-release Actions
+        runs-on: ubuntu-latest
+        needs: [pre-release-checks, create-release]
+
+        steps:
+            - name: 📢 Announce release
+              run: |
+                  VERSION="${{ needs.pre-release-checks.outputs.version }}"
+                  IS_PRERELEASE="${{ needs.pre-release-checks.outputs.is_prerelease }}"
+
+                  if [ "$IS_PRERELEASE" == "true" ]; then
+                    echo "🚀 SwissGrid v$VERSION pre-release is now available!"
+                  else
+                    echo "🎉 SwissGrid v$VERSION has been released!"
+                  fi
+
+                  echo "📋 Release URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/v$VERSION"
+                  echo "🐳 Docker Images:"
+                  echo "  - ghcr.io/${{ github.repository }}-client:$VERSION"
+                  echo "  - ghcr.io/${{ github.repository }}-server:$VERSION"

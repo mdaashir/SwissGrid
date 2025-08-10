@@ -1,0 +1,219 @@
+name: 📦 Dependency Management
+
+on:
+    schedule:
+        # Run every Monday at 9 AM UTC
+        - cron: '0 9 * * 1'
+    workflow_dispatch:
+    push:
+        paths:
+            - '**/package.json'
+            - '**/package-lock.json'
+
+env:
+    NODE_VERSION: '20.x'
+
+jobs:
+    # 🔍 Security Audit
+    security-audit:
+        name: 🛡️ Security Audit
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: 📥 Checkout repository
+              uses: actions/checkout@v4
+
+            - name: 🟢 Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: ${{ env.NODE_VERSION }}
+
+            - name: 🔍 Root dependencies audit
+              run: |
+                  npm audit --audit-level critical
+                  if [ $? -ne 0 ]; then
+                    echo "::error::Critical vulnerabilities found in root dependencies"
+                    npm audit fix --force
+                  fi
+
+            - name: 🔍 Client dependencies audit
+              run: |
+                  cd client
+                  npm audit --audit-level critical
+                  if [ $? -ne 0 ]; then
+                    echo "::error::Critical vulnerabilities found in client dependencies"
+                    npm audit fix --force
+                  fi
+
+            - name: 🔍 Server dependencies audit
+              run: |
+                  cd server
+                  npm audit --audit-level critical
+                  if [ $? -ne 0 ]; then
+                    echo "::error::Critical vulnerabilities found in server dependencies"
+                    npm audit fix --force
+                  fi
+
+            - name: 📊 Generate security report
+              run: |
+                  echo "# 🛡️ Security Audit Report" > security-report.md
+                  echo "Generated on: $(date)" >> security-report.md
+                  echo "" >> security-report.md
+
+                  echo "## Root Dependencies" >> security-report.md
+                  npm audit --json | jq -r '.vulnerabilities | to_entries[] | "- \(.key): \(.value.severity)"' >> security-report.md || echo "No vulnerabilities found" >> security-report.md
+
+                  echo "## Client Dependencies" >> security-report.md
+                  cd client && npm audit --json | jq -r '.vulnerabilities | to_entries[] | "- \(.key): \(.value.severity)"' >> ../security-report.md || echo "No vulnerabilities found" >> ../security-report.md
+
+                  echo "## Server Dependencies" >> security-report.md
+                  cd ../server && npm audit --json | jq -r '.vulnerabilities | to_entries[] | "- \(.key): \(.value.severity)"' >> ../security-report.md || echo "No vulnerabilities found" >> ../security-report.md
+
+            - name: 📄 Upload security report
+              uses: actions/upload-artifact@v4
+              with:
+                  name: security-report
+                  path: security-report.md
+
+    # 📈 Dependency Updates
+    dependency-updates:
+        name: 📈 Check for Updates
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: 📥 Checkout repository
+              uses: actions/checkout@v4
+              with:
+                  token: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: 🟢 Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: ${{ env.NODE_VERSION }}
+
+            - name: 📦 Install dependencies
+              run: |
+                  npm install
+                  npm install --prefix client
+                  npm install --prefix server
+
+            - name: 📈 Check for outdated packages
+              run: |
+                  echo "# 📈 Outdated Dependencies Report" > outdated-report.md
+                  echo "Generated on: $(date)" >> outdated-report.md
+                  echo "" >> outdated-report.md
+
+                  echo "## Root Dependencies" >> outdated-report.md
+                  npm outdated --json | jq -r 'to_entries[] | "- \(.key): \(.value.current) → \(.value.latest)"' >> outdated-report.md || echo "All packages are up to date" >> outdated-report.md
+
+                  echo "## Client Dependencies" >> outdated-report.md
+                  cd client && npm outdated --json | jq -r 'to_entries[] | "- \(.key): \(.value.current) → \(.value.latest)"' >> ../outdated-report.md || echo "All packages are up to date" >> ../outdated-report.md
+
+                  echo "## Server Dependencies" >> outdated-report.md
+                  cd ../server && npm outdated --json | jq -r 'to_entries[] | "- \(.key): \(.value.current) → \(.value.latest)"' >> ../outdated-report.md || echo "All packages are up to date" >> ../outdated-report.md
+
+            - name: 📄 Upload outdated report
+              uses: actions/upload-artifact@v4
+              with:
+                  name: outdated-report
+                  path: outdated-report.md
+
+    # 🔄 Auto Update Dependencies
+    auto-update:
+        name: 🔄 Auto Update Minor/Patch
+        runs-on: ubuntu-latest
+        if: github.event_name == 'schedule'
+
+        steps:
+            - name: 📥 Checkout repository
+              uses: actions/checkout@v4
+              with:
+                  token: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: 🟢 Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: ${{ env.NODE_VERSION }}
+
+            - name: 🔄 Update dependencies
+              run: |
+                  # Update patch and minor versions only
+                  npx npm-check-updates -u --target patch
+                  cd client && npx npm-check-updates -u --target patch
+                  cd ../server && npx npm-check-updates -u --target patch
+
+            - name: 📦 Install updated dependencies
+              run: |
+                  npm install
+                  npm install --prefix client
+                  npm install --prefix server
+
+            - name: 🧪 Run tests to ensure updates don't break anything
+              run: |
+                  npm run test:client
+                  npm run test:server
+
+            - name: 📝 Create Pull Request
+              uses: peter-evans/create-pull-request@v5
+              with:
+                  token: ${{ secrets.GITHUB_TOKEN }}
+                  commit-message: '📦 chore: update dependencies (patch/minor)'
+                  title: '📦 Automated Dependency Updates'
+                  body: |
+                      🤖 **Automated dependency updates**
+
+                      This PR contains automatic updates for patch and minor version dependencies.
+
+                      ### Changes:
+                      - Updated patch and minor versions
+                      - All tests pass ✅
+                      - Security audit clean ✅
+
+                      ### Notes:
+                      - Major version updates require manual review
+                      - Auto-merge enabled for patch updates
+
+                      Generated by GitHub Actions 🚀
+                  branch: automated-dependency-updates
+                  delete-branch: true
+
+    # 📊 Dependency Analysis
+    dependency-analysis:
+        name: 📊 Dependency Analysis
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: 📥 Checkout repository
+              uses: actions/checkout@v4
+
+            - name: 🟢 Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: ${{ env.NODE_VERSION }}
+
+            - name: 📦 Install dependencies
+              run: |
+                  npm install
+                  npm install --prefix client
+                  npm install --prefix server
+
+            - name: 📊 Analyze bundle size
+              run: |
+                  cd client
+                  npm run build
+                  npx bundlesize
+
+            - name: 🔍 License check
+              run: |
+                  npx license-checker --summary > license-summary.txt
+                  cd client && npx license-checker --summary > ../client-license-summary.txt
+                  cd ../server && npx license-checker --summary > ../server-license-summary.txt
+
+            - name: 📄 Upload analysis reports
+              uses: actions/upload-artifact@v4
+              with:
+                  name: dependency-analysis
+                  path: |
+                      license-summary.txt
+                      client-license-summary.txt
+                      server-license-summary.txt

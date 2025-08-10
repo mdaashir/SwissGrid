@@ -1,0 +1,6 @@
+echo "🔍 Running pre-commit hooks..."
+
+# Run lint-staged for formatting and linting
+npx lint-staged
+
+echo "✅ Pre-commit checks passed!"
