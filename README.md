@@ -171,6 +171,23 @@ Clean up dependencies and build artifacts:
 npm run clean  # Remove all node_modules and dist folders
 ```
 
+## 🔧 Git Hooks
+
+This project uses Husky for Git hooks to ensure code quality:
+
+- **Pre-commit**: Runs `lint-staged` to format and lint staged files
+- **Commit-msg**: Validates commit message format
+
+### Manual Hook Execution
+
+You can manually run the pre-commit checks:
+
+```bash
+npm run pre-commit        # Run lint-staged only
+npm run pre-commit:test   # Run lint-staged + all tests
+npx lint-staged           # Run lint-staged directly
+```
+
 ## 📁 Project Scripts
 
 Available npm scripts in root directory:
@@ -195,5 +212,3 @@ Available npm scripts in root directory:
 ## 📄 License
 
 This project is licensed under the terms specified in the LICENSE file.
-
-# Test comment

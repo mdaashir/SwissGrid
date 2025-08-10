@@ -1,6 +1,3 @@
-#!/usr/bin/env sh
-. "$(dirname -- "$0")/_/husky.sh"
-
 # Optional: Add commit message linting here
 # npx --no -- commitlint --edit "$1"
 

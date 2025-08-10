@@ -28,7 +28,8 @@
         "docker:down": "docker-compose down",
         "docker:logs": "docker-compose logs -f",
         "prepare": "husky",
-        "pre-commit": "lint-staged && npm test"
+        "pre-commit": "lint-staged",
+        "pre-commit:test": "lint-staged && npm test"
     },
     "devDependencies": {
         "concurrently": "^9.2.0",
