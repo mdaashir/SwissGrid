@@ -41,5 +41,17 @@
         "typescript": "^5.2.2",
         "vite": "^7.1.1",
         "vitest": "^3.2.4"
-    }
+    },
+    "bundlesize": [
+        {
+            "path": "./dist/assets/*.js",
+            "maxSize": "200 kB",
+            "compression": "gzip"
+        },
+        {
+            "path": "./dist/assets/*.css",
+            "maxSize": "10 kB",
+            "compression": "gzip"
+        }
+    ]
 }

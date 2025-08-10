@@ -1,0 +1,299 @@
+name: 🐳 Docker Build & Deploy
+
+on:
+    push:
+        branches: [main]
+        paths:
+            - 'client/Dockerfile'
+            - 'server/Dockerfile'
+            - 'docker-compose.yml'
+            - 'client/**'
+            - 'server/**'
+    pull_request:
+        branches: [main]
+        paths:
+            - 'client/Dockerfile'
+            - 'server/Dockerfile'
+            - 'docker-compose.yml'
+    workflow_dispatch:
+        inputs:
+            environment:
+                description: 'Environment to deploy to'
+                required: true
+                default: 'staging'
+                type: choice
+                options:
+                    - staging
+                    - production
+            push_to_registry:
+                description: 'Push to container registry'
+                required: false
+                default: true
+                type: boolean
+
+env:
+    REGISTRY: ghcr.io
+    IMAGE_BASE_NAME: ${{ github.repository }}
+
+jobs:
+    # 🔍 Docker Lint & Security
+    docker-security:
+        name: 🛡️ Docker Security & Lint
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: 📥 Checkout repository
+              uses: actions/checkout@v4
+
+            - name: 🔍 Lint Dockerfiles
+              uses: hadolint/hadolint-action@v3.1.0
+              with:
+                  dockerfile: client/Dockerfile
+                  format: sarif
+                  output-file: client-hadolint.sarif
+
+            - name: 🔍 Lint Server Dockerfile
+              uses: hadolint/hadolint-action@v3.1.0
+              with:
+                  dockerfile: server/Dockerfile
+                  format: sarif
+                  output-file: server-hadolint.sarif
+
+            - name: 📊 Upload Hadolint results
+              uses: github/codeql-action/upload-sarif@v2
+              if: always()
+              with:
+                  sarif_file: client-hadolint.sarif
+
+            - name: 📊 Upload Server Hadolint results
+              uses: github/codeql-action/upload-sarif@v2
+              if: always()
+              with:
+                  sarif_file: server-hadolint.sarif
+
+    # 🏗️ Build Docker Images
+    build:
+        name: 🏗️ Build Images
+        runs-on: ubuntu-latest
+        needs: docker-security
+
+        strategy:
+            matrix:
+                service: [client, server]
+
+        outputs:
+            client-image: ${{ steps.meta.outputs.tags }}
+            client-digest: ${{ steps.build.outputs.digest }}
+            server-image: ${{ steps.meta.outputs.tags }}
+            server-digest: ${{ steps.build.outputs.digest }}
+
+        steps:
+            - name: 📥 Checkout repository
+              uses: actions/checkout@v4
+
+            - name: 🐳 Set up Docker Buildx
+              uses: docker/setup-buildx-action@v3
+              with:
+                  driver-opts: network=host
+
+            - name: 🔑 Login to Container Registry
+              if: github.event_name != 'pull_request'
+              uses: docker/login-action@v3
+              with:
+                  registry: ${{ env.REGISTRY }}
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: 🏷️ Extract metadata
+              id: meta
+              uses: docker/metadata-action@v5
+              with:
+                  images: ${{ env.REGISTRY }}/${{ env.IMAGE_BASE_NAME }}-${{ matrix.service }}
+                  tags: |
+                      type=ref,event=branch
+                      type=ref,event=pr
+                      type=semver,pattern={{version}}
+                      type=semver,pattern={{major}}.{{minor}}
+                      type=raw,value=latest,enable={{is_default_branch}}
+                      type=sha,prefix={{branch}}-
+
+            - name: 🏗️ Build and push
+              id: build
+              uses: docker/build-push-action@v5
+              with:
+                  context: ./${{ matrix.service }}
+                  platforms: linux/amd64,linux/arm64
+                  push: ${{ github.event_name != 'pull_request' }}
+                  tags: ${{ steps.meta.outputs.tags }}
+                  labels: ${{ steps.meta.outputs.labels }}
+                  cache-from: type=gha
+                  cache-to: type=gha,mode=max
+                  build-args: |
+                      BUILDTIME=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
+                      VERSION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.version'] }}
+                      REVISION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.revision'] }}
+
+            - name: 🔍 Scan image for vulnerabilities
+              if: github.event_name != 'pull_request'
+              uses: aquasecurity/trivy-action@master
+              with:
+                  image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_BASE_NAME }}-${{ matrix.service }}:${{ github.sha }}
+                  format: 'sarif'
+                  output: '${{ matrix.service }}-trivy.sarif'
+
+            - name: 📊 Upload Trivy scan results
+              if: github.event_name != 'pull_request'
+              uses: github/codeql-action/upload-sarif@v2
+              with:
+                  sarif_file: '${{ matrix.service }}-trivy.sarif'
+
+    # 🧪 Integration Testing
+    integration-test:
+        name: 🧪 Integration Test
+        runs-on: ubuntu-latest
+        needs: build
+        if: github.event_name != 'pull_request'
+
+        services:
+            mongodb:
+                image: mongo:7.0
+                env:
+                    MONGO_INITDB_ROOT_USERNAME: root
+                    MONGO_INITDB_ROOT_PASSWORD: testpassword
+                    MONGO_INITDB_DATABASE: swissgrid_test
+                ports:
+                    - 27017:27017
+                options: >-
+                    --health-cmd "mongosh --eval 'db.adminCommand(\"ping\")'"
+                    --health-interval 10s
+                    --health-timeout 5s
+                    --health-retries 5
+
+        steps:
+            - name: 📥 Checkout repository
+              uses: actions/checkout@v4
+
+            - name: 🔑 Login to Container Registry
+              uses: docker/login-action@v3
+              with:
+                  registry: ${{ env.REGISTRY }}
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: 🐳 Create test docker-compose
+              run: |
+                  cat > docker-compose.test.yml << EOF
+                  version: '3.8'
+                  services:
+                    client:
+                      image: ${{ env.REGISTRY }}/${{ env.IMAGE_BASE_NAME }}-client:${{ github.sha }}
+                      ports:
+                        - "3000:3000"
+                      environment:
+                        - VITE_API_URL=http://localhost:5000
+                      depends_on:
+                        - server
+
+                    server:
+                      image: ${{ env.REGISTRY }}/${{ env.IMAGE_BASE_NAME }}-server:${{ github.sha }}
+                      ports:
+                        - "5000:5000"
+                      environment:
+                        - NODE_ENV=test
+                        - MONGODB_URI=mongodb://root:testpassword@host.docker.internal:27017/swissgrid_test?authSource=admin
+                      extra_hosts:
+                        - "host.docker.internal:host-gateway"
+                  EOF
+
+            - name: 🚀 Start services
+              run: |
+                  docker-compose -f docker-compose.test.yml up -d
+
+            - name: ⏳ Wait for services
+              run: |
+                  timeout 300 bash -c 'until curl -f http://localhost:3000 >/dev/null 2>&1; do sleep 5; echo "Waiting for client..."; done'
+                  timeout 300 bash -c 'until curl -f http://localhost:5000/health >/dev/null 2>&1; do sleep 5; echo "Waiting for server..."; done'
+
+            - name: 🧪 Run integration tests
+              run: |
+                  # Test client accessibility
+                  curl -f http://localhost:3000 || exit 1
+
+                  # Test server health
+                  curl -f http://localhost:5000/health || exit 1
+
+                  # Test API endpoints
+                  response=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5000/api/health)
+                  if [ $response -ne 200 ]; then
+                    echo "API health check failed with status: $response"
+                    exit 1
+                  fi
+
+            - name: 📊 Collect logs
+              if: always()
+              run: |
+                  docker-compose -f docker-compose.test.yml logs > integration-test-logs.txt
+
+            - name: 📄 Upload logs
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: integration-test-logs
+                  path: integration-test-logs.txt
+
+            - name: 🧹 Cleanup
+              if: always()
+              run: |
+                  docker-compose -f docker-compose.test.yml down -v
+
+    # 🚀 Deploy
+    deploy:
+        name: 🚀 Deploy
+        runs-on: ubuntu-latest
+        needs: [build, integration-test]
+        if: |
+            github.event_name != 'pull_request' &&
+            (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/base')
+
+        environment:
+            name: ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
+            url: ${{ github.ref == 'refs/heads/main' && 'https://swissgrid.com' || 'https://staging.swissgrid.com' }}
+
+        steps:
+            - name: 📥 Checkout repository
+              uses: actions/checkout@v4
+
+            - name: 🚀 Deploy to ${{ github.ref == 'refs/heads/main' && 'Production' || 'Staging' }}
+              run: |
+                  echo "🚀 Deploying SwissGrid to ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}..."
+                  echo "Client Image: ${{ env.REGISTRY }}/${{ env.IMAGE_BASE_NAME }}-client:${{ github.sha }}"
+                  echo "Server Image: ${{ env.REGISTRY }}/${{ env.IMAGE_BASE_NAME }}-server:${{ github.sha }}"
+
+                  # Here you would add your actual deployment logic
+                  # For example: kubectl, docker-compose, or deployment scripts
+
+                  echo "✅ Deployment completed successfully!"
+
+    # 🧹 Cleanup Old Images
+    cleanup:
+        name: 🧹 Cleanup
+        runs-on: ubuntu-latest
+        needs: deploy
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+        steps:
+            - name: 🗑️ Delete old container images
+              uses: actions/delete-package-versions@v4
+              with:
+                  package-name: ${{ env.IMAGE_BASE_NAME }}-client
+                  package-type: container
+                  min-versions-to-keep: 10
+                  delete-only-untagged-versions: true
+
+            - name: 🗑️ Delete old server images
+              uses: actions/delete-package-versions@v4
+              with:
+                  package-name: ${{ env.IMAGE_BASE_NAME }}-server
+                  package-type: container
+                  min-versions-to-keep: 10
+                  delete-only-untagged-versions: true

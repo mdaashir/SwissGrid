@@ -11,7 +11,10 @@ services:
     environment:
       - VITE_API_URL=http://localhost:5000
     depends_on:
-      - server
+      server:
+        condition: service_healthy
+    networks:
+      - swissgrid-network
 
   server:
     build:
@@ -26,11 +29,20 @@ services:
       - NODE_ENV=development
       - MONGODB_URI=mongodb://root:example@mongodb:27017/swissgrid?authSource=admin
     depends_on:
-      - mongodb
+      mongodb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - swissgrid-network
 
   mongodb:
     image: mongo:7.0
-    restart: always
+    restart: unless-stopped
     ports:
       - '27017:27017'
     environment:
@@ -39,6 +51,20 @@ services:
       MONGO_INITDB_DATABASE: swissgrid
     volumes:
       - mongodb_data:/data/db
+      - ./scripts/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - swissgrid-network
+    command: mongod --auth
+
+networks:
+  swissgrid-network:
+    driver: bridge
 
 volumes:
   mongodb_data:

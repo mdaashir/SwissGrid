@@ -1,0 +1,275 @@
+name: 🚀 SwissGrid CI/CD Pipeline
+
+on:
+    push:
+        branches: [main, base]
+    pull_request:
+        branches: [main, staging, pre-staging]
+    workflow_dispatch:
+
+env:
+    NODE_VERSION: '20.x'
+    MONGODB_VERSION: '7.0'
+
+jobs:
+    # 🔍 Code Quality & Security Checks
+    quality-checks:
+        name: 🛡️ Quality & Security
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: 📥 Checkout repository
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
+            - name: 🟢 Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: ${{ env.NODE_VERSION }}
+                  cache: 'npm'
+
+            - name: 📦 Install dependencies
+              run: |
+                  npm install
+                  npm install --prefix client
+                  npm install --prefix server
+
+            - name: 🔍 Security audit
+              run: |
+                  npm audit --audit-level moderate
+                  npm audit --prefix client --audit-level moderate
+                  npm audit --prefix server --audit-level moderate
+
+            - name: 🎨 Code formatting check
+              run: npm run format:check
+
+            - name: 📏 Lint code
+              run: |
+                  npm run lint:client
+                  npm run lint:server
+
+            - name: 🔧 TypeScript check
+              run: |
+                  cd client && npx tsc --noEmit
+                  cd ../server && npx tsc --noEmit
+
+    # 🧪 Testing Suite
+    tests:
+        name: 🧪 Test Suite
+        runs-on: ubuntu-latest
+        needs: quality-checks
+
+        strategy:
+            matrix:
+                node-version: ['18.x', '20.x']
+
+        services:
+            mongodb:
+                image: mongo:${{ env.MONGODB_VERSION }}
+                env:
+                    MONGO_INITDB_ROOT_USERNAME: root
+                    MONGO_INITDB_ROOT_PASSWORD: testpassword
+                    MONGO_INITDB_DATABASE: swissgrid_test
+                ports:
+                    - 27017:27017
+                options: >-
+                    --health-cmd "mongosh --eval 'db.adminCommand(\"ping\")'"
+                    --health-interval 10s
+                    --health-timeout 5s
+                    --health-retries 5
+                    --health-start-period 30s
+
+        steps:
+            - name: 📥 Checkout repository
+              uses: actions/checkout@v4
+
+            - name: 🟢 Setup Node.js ${{ matrix.node-version }}
+              uses: actions/setup-node@v4
+              with:
+                  node-version: ${{ matrix.node-version }}
+                  cache: 'npm'
+
+            - name: 📦 Install dependencies
+              run: |
+                  npm install
+                  npm install --prefix client
+                  npm install --prefix server
+
+            - name: 🔗 Wait for MongoDB
+              run: |
+                  timeout 60 bash -c 'until mongosh --host localhost:27017 --eval "db.adminCommand(\"ping\")" --quiet; do sleep 2; done'
+
+            - name: 🧪 Run client tests
+              run: npm run test:client
+              env:
+                  CI: true
+
+            - name: 🧪 Run server tests
+              run: npm run test:server
+              env:
+                  CI: true
+                  MONGODB_URI: mongodb://root:testpassword@localhost:27017/swissgrid_test?authSource=admin
+
+            - name: 📊 Upload coverage reports
+              uses: codecov/codecov-action@v3
+              if: matrix.node-version == '20.x'
+              with:
+                  directory: ./coverage
+                  flags: unittests
+                  name: codecov-umbrella
+
+    # 🏗️ Build Application
+    build:
+        name: 🏗️ Build & Package
+        runs-on: ubuntu-latest
+        needs: [quality-checks, tests]
+
+        steps:
+            - name: 📥 Checkout repository
+              uses: actions/checkout@v4
+
+            - name: 🟢 Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: ${{ env.NODE_VERSION }}
+                  cache: 'npm'
+
+            - name: 📦 Install dependencies
+              run: |
+                  npm install
+                  npm install --prefix client
+                  npm install --prefix server
+
+            - name: 🏗️ Build client
+              run: npm run build:client
+
+            - name: 🏗️ Build server
+              run: npm run build:server
+
+            - name: 📁 Upload client build artifacts
+              uses: actions/upload-artifact@v4
+              with:
+                  name: client-build
+                  path: client/dist/
+                  retention-days: 7
+
+            - name: 📁 Upload server build artifacts
+              uses: actions/upload-artifact@v4
+              with:
+                  name: server-build
+                  path: server/dist/
+                  retention-days: 7
+
+    # 🐳 Docker Build & Test
+    docker:
+        name: 🐳 Docker Build & Test
+        runs-on: ubuntu-latest
+        needs: build
+        if: github.event_name != 'pull_request'
+
+        steps:
+            - name: 📥 Checkout repository
+              uses: actions/checkout@v4
+
+            - name: 🐳 Set up Docker Buildx
+              uses: docker/setup-buildx-action@v3
+
+            - name: 🔑 Login to Docker Hub
+              if: github.ref == 'refs/heads/main'
+              uses: docker/login-action@v3
+              with:
+                  username: ${{ secrets.DOCKER_HUB_USERNAME }}
+                  password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+            - name: 🏗️ Build and test Docker images
+              run: |
+                  docker-compose -f docker-compose.yml build --no-cache
+                  docker-compose -f docker-compose.yml up -d
+
+            - name: 🧪 Test Docker containers
+              run: |
+                  # Wait for services to be ready
+                  timeout 300 bash -c 'until curl -f http://localhost:3000 >/dev/null 2>&1; do sleep 5; echo "Waiting for client..."; done'
+                  timeout 300 bash -c 'until curl -f http://localhost:5000/health >/dev/null 2>&1; do sleep 5; echo "Waiting for server..."; done'
+
+                  # Basic health checks
+                  curl -f http://localhost:3000 || exit 1
+                  curl -f http://localhost:5000/health || exit 1
+
+            - name: 🧹 Cleanup
+              if: always()
+              run: docker-compose down -v
+
+    # 🚀 Deploy to Staging
+    deploy-staging:
+        name: 🚀 Deploy to Staging
+        runs-on: ubuntu-latest
+        needs: [build, docker]
+        if: github.ref == 'refs/heads/base' && github.event_name == 'push'
+        environment: staging
+
+        steps:
+            - name: 📥 Checkout repository
+              uses: actions/checkout@v4
+
+            - name: 📁 Download build artifacts
+              uses: actions/download-artifact@v4
+              with:
+                  name: client-build
+                  path: client/dist/
+
+            - name: 📁 Download server artifacts
+              uses: actions/download-artifact@v4
+              with:
+                  name: server-build
+                  path: server/dist/
+
+            - name: 🚀 Deploy to staging
+              run: |
+                  echo "🚀 Deploying to staging environment..."
+                  echo "✅ Staging deployment completed!"
+
+    # 🌟 Deploy to Production
+    deploy-production:
+        name: 🌟 Deploy to Production
+        runs-on: ubuntu-latest
+        needs: [build, docker]
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        environment: production
+
+        steps:
+            - name: 📥 Checkout repository
+              uses: actions/checkout@v4
+
+            - name: 📁 Download build artifacts
+              uses: actions/download-artifact@v4
+              with:
+                  name: client-build
+                  path: client/dist/
+
+            - name: 📁 Download server artifacts
+              uses: actions/download-artifact@v4
+              with:
+                  name: server-build
+                  path: server/dist/
+
+            - name: 🌟 Deploy to production
+              run: |
+                  echo "🌟 Deploying to production environment..."
+                  echo "✅ Production deployment completed!"
+
+    # 📢 Notification
+    notify:
+        name: 📢 Notify
+        runs-on: ubuntu-latest
+        needs: [quality-checks, tests, build, docker]
+        if: always()
+
+        steps:
+            - name: 📢 Send notification
+              if: failure()
+              run: |
+                  echo "❌ Pipeline failed! Check the logs for details."
+                  echo "Branch: ${{ github.ref_name }}"
+                  echo "Commit: ${{ github.sha }}"

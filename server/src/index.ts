@@ -20,6 +20,15 @@ fastify.get('/health', async () => {
 });
 
 // API routes
+fastify.get('/api/health', async () => {
+    return {
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        service: 'SwissGrid API',
+        version: '1.0.0',
+    };
+});
+
 fastify.get('/api/hello', async () => {
     return {
         message: 'Hello from SwissGrid API!',

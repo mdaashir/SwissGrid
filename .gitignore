@@ -103,10 +103,6 @@ build/
 # OS generated files
 Thumbs.db
 
-# Lock files (choose one based on your preference)
-package-lock.json
-yarn.lock
-
 # Local files
 *.local
 
