@@ -46,35 +46,50 @@ SwissGrid/
 
 1. Clone the repository:
 
-   ```bash
-   git clone https://github.com/mdaashir/SwissGrid.git
-   cd SwissGrid
-   ```
+    ```bash
+    git clone https://github.com/mdaashir/SwissGrid.git
+    cd SwissGrid
+    ```
 
-2. Install dependencies for both client and server:
+2. Install all dependencies:
 
-   ```bash
-   # Install client dependencies
-   cd client
-   npm install
+    ```bash
+    npm run install:all
+    ```
 
-   # Install server dependencies
-   cd ../server
-   npm install
-   ```
+    Or install dependencies individually:
+
+    ```bash
+    # Install root dependencies
+    npm install
+
+    # Install client dependencies
+    cd client
+    npm install
+
+    # Install server dependencies
+    cd ../server
+    npm install
+    ```
 
 ### Development
 
 Start the development servers:
 
 ```bash
-# Terminal 1 - Start the server
-cd server
+# Option 1: Start both services with concurrently
 npm run dev
 
-# Terminal 2 - Start the client
-cd client
-npm run dev
+# Option 2: Start individual services
+npm run dev:client  # Start React client only
+npm run dev:server  # Start Fastify server only
+
+# Option 3: Use development scripts
+./dev.sh           # Linux/macOS
+.\dev.ps1          # Windows PowerShell
+
+# Option 4: Use Docker
+docker-compose up --build
 ```
 
 ### Testing
@@ -82,13 +97,47 @@ npm run dev
 Run tests for both applications:
 
 ```bash
-# Test client
-cd client
+# Run all tests
 npm test
 
-# Test server
-cd server
-npm test
+# Run individual tests
+npm run test:client
+npm run test:server
+
+# Run with coverage
+cd server && npm run test:coverage
+```
+
+### Code Quality
+
+Linting and formatting:
+
+```bash
+# Lint all code
+npm run lint
+
+# Fix linting issues
+npm run lint:fix
+
+# Format all code
+npm run format
+
+# Check formatting
+cd client && npm run format:check
+cd server && npm run format:check
+```
+
+### Building
+
+Build the applications:
+
+```bash
+# Build both applications
+npm run build
+
+# Build individually
+npm run build:client
+npm run build:server
 ```
 
 ## 📦 Docker
@@ -98,7 +147,42 @@ Build and run with Docker:
 ```bash
 # Build and start all services
 docker-compose up --build
+
+# Run in background
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop services
+docker-compose down
+
+# Or use npm scripts
+npm run docker:up
+npm run docker:down
+npm run docker:logs
 ```
+
+## 🧹 Maintenance
+
+Clean up dependencies and build artifacts:
+
+```bash
+npm run clean  # Remove all node_modules and dist folders
+```
+
+## 📁 Project Scripts
+
+Available npm scripts in root directory:
+
+- `npm run dev` - Start both client and server concurrently
+- `npm run build` - Build both applications
+- `npm test` - Run all tests
+- `npm run lint` - Lint all code
+- `npm run lint:fix` - Fix linting issues
+- `npm run format` - Format all code
+- `npm run install:all` - Install all dependencies
+- `npm run clean` - Clean all build artifacts
 
 ## 🤝 Contributing
 

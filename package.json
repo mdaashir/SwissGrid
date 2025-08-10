@@ -1,43 +1,48 @@
 {
-    "name": "swiss-grid",
+    "name": "swiss-grid-monorepo",
     "version": "1.0.0",
+    "description": "SwissGrid monorepo application",
     "private": true,
-    "description": "A minimal monorepo application",
+    "scripts": {
+        "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+        "dev:client": "cd client && npm run dev",
+        "dev:server": "cd server && npm run dev",
+        "build": "npm run build:client && npm run build:server",
+        "build:client": "cd client && npm run build",
+        "build:server": "cd server && npm run build",
+        "test": "npm run test:client && npm run test:server",
+        "test:client": "cd client && npm run test",
+        "test:server": "cd server && npm run test",
+        "lint": "npm run lint:client && npm run lint:server",
+        "lint:client": "cd client && npm run lint",
+        "lint:server": "cd server && npm run lint",
+        "lint:fix": "npm run lint:fix:client && npm run lint:fix:server",
+        "lint:fix:client": "cd client && npm run lint:fix",
+        "lint:fix:server": "cd server && npm run lint:fix",
+        "format": "npm run format:client && npm run format:server",
+        "format:client": "cd client && npm run format",
+        "format:server": "cd server && npm run format",
+        "install:all": "npm install && cd client && npm install && cd ../server && npm install",
+        "clean": "rimraf client/dist client/node_modules server/dist server/node_modules node_modules",
+        "docker:up": "docker-compose up --build",
+        "docker:down": "docker-compose down",
+        "docker:logs": "docker-compose logs -f",
+        "prepare": "husky",
+        "pre-commit": "lint-staged && npm test"
+    },
+    "devDependencies": {
+        "concurrently": "^9.2.0",
+        "husky": "^9.1.7",
+        "lint-staged": "^16.1.5",
+        "prettier": "^3.6.2",
+        "rimraf": "^6.0.1"
+    },
     "workspaces": [
         "client",
         "server"
     ],
-    "scripts": {
-        "install:all": "npm install && npm install --prefix client && npm install --prefix server",
-        "dev:client": "npm run dev --prefix client",
-        "dev:server": "npm run dev --prefix server",
-        "build:client": "npm run build --prefix client",
-        "build:server": "npm run build --prefix server",
-        "test:client": "npm test --prefix client",
-        "test:server": "npm test --prefix server",
-        "test": "npm run test:client && npm run test:server",
-        "lint": "npm run lint --prefix client && npm run lint --prefix server",
-        "lint:fix": "npm run lint:fix --prefix client && npm run lint:fix --prefix server",
-        "format": "prettier --write \"**/*.{js,jsx,ts,tsx,json,css,md}\"",
-        "format:check": "prettier --check \"**/*.{js,jsx,ts,tsx,json,css,md}\"",
-        "prepare": "husky install",
-        "clean": "rm -rf node_modules client/node_modules server/node_modules client/dist server/dist"
-    },
     "engines": {
-        "node": ">=18.0.0"
-    },
-    "devDependencies": {
-        "@types/node": "^20.0.0",
-        "@typescript-eslint/eslint-plugin": "^7.2.0",
-        "@typescript-eslint/parser": "^7.2.0",
-        "eslint": "^8.57.0",
-        "eslint-config-prettier": "^9.1.0",
-        "eslint-plugin-import": "^2.29.1",
-        "eslint-plugin-jest": "^28.2.0",
-        "eslint-plugin-prettier": "^5.1.3",
-        "husky": "^9.0.11",
-        "lint-staged": "^15.2.2",
-        "prettier": "^3.2.5",
-        "typescript": "^5.0.0"
+        "node": ">=18.0.0",
+        "npm": ">=8.0.0"
     }
 }

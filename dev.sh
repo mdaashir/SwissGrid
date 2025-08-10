@@ -36,8 +36,8 @@ case "$1" in
         ;;
     "")
         echo "Choose what to start:"
-        echo "  npm run dev:client  - Start React client only"
-        echo "  npm run dev:server  - Start Fastify server only"
+        echo "  ./dev.sh client     - Start React client only"
+        echo "  ./dev.sh server     - Start Fastify server only"
         echo "  docker-compose up   - Start everything with Docker"
         echo ""
         echo "Starting both services..."

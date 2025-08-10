@@ -40,20 +40,31 @@ switch ($args[0]) {
     }
     default {
         Write-Host "Choose what to start:" -ForegroundColor Cyan
-        Write-Host "  npm run dev:client  - Start React client only" -ForegroundColor Cyan
-        Write-Host "  npm run dev:server  - Start Fastify server only" -ForegroundColor Cyan
+        Write-Host "  .\dev.ps1 client    - Start React client only" -ForegroundColor Cyan
+        Write-Host "  .\dev.ps1 server    - Start Fastify server only" -ForegroundColor Cyan
         Write-Host "  docker-compose up   - Start everything with Docker" -ForegroundColor Cyan
         Write-Host ""
         Write-Host "Starting both services..." -ForegroundColor Green
 
         # Start server in background job
-        Start-Job -ScriptBlock {
-            Set-Location $using:PWD
-            Start-Server
-        }
+        $serverJob = Start-Job -ScriptBlock {
+            param($path)
+            Set-Location $path
+            Set-Location server
+            npm run dev
+        } -ArgumentList (Get-Location).Path
+
+        # Wait a moment for server to start
+        Start-Sleep -Seconds 3
 
         # Start client in foreground
-        Start-Client
+        Write-Host "📱 Starting React client..." -ForegroundColor Blue
+        Set-Location client
+        npm run dev
+
+        # Clean up the background job when done
+        Stop-Job $serverJob
+        Remove-Job $serverJob
         break
     }
 }
