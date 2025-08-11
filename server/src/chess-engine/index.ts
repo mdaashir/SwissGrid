@@ -1,0 +1,56 @@
+/**
+ * Chess Engine Module
+ * Main entry point for the chess engine
+ */
+
+export {
+    algebraicToSquare,
+    clearSquare,
+    createSquare,
+    EMPTY_BOARD,
+    FILE_A,
+    FILE_B,
+    FILE_C,
+    FILE_D,
+    FILE_E,
+    FILE_F,
+    FILE_G,
+    FILE_H,
+    FULL_BOARD,
+    generateBishopAttacks,
+    generateQueenAttacks,
+    generateRookAttacks,
+    getDistance,
+    getFile,
+    getRank,
+    isSquareSet,
+    isValidSquare,
+    lsb,
+    popcount,
+    popLsb,
+    RANK_1,
+    RANK_2,
+    RANK_3,
+    RANK_4,
+    RANK_5,
+    RANK_6,
+    RANK_7,
+    RANK_8,
+    setSquare,
+    squareToAlgebraic,
+    squareToBitboard,
+} from './bitboard';
+export { Game } from './game';
+export type {
+    Bitboard,
+    CastlingRights,
+    Color,
+    GameResult,
+    GameState,
+    Move,
+    MoveValidationResult,
+    Piece,
+    PieceType,
+    PositionHash,
+    Square,
+} from './types';
