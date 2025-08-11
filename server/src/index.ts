@@ -1,54 +1,102 @@
+// environment variables
+import dotenv from 'dotenv';
+dotenv.config();
+
+const PORT = Number(process.env.PORT) || 5000;
+const HOST = process.env.HOST || '0.0.0.0';
+const ORIGIN = process.env.ORIGIN?.split(',') || ['http://localhost:3000'];
+
+import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
-import Fastify from 'fastify';
-import { connectToDatabase } from './db/connection';
+import fastifySwagger from '@fastify/swagger';
+import fastifySwaggerUi from '@fastify/swagger-ui';
+// import { connectToDatabase } from './db/connection';
+import { Server as SocketIOServer } from 'socket.io';
 
-const fastify = Fastify({
-    logger: true,
-});
+const fastify = Fastify({ logger: true });
 
-// Register plugins
-fastify.register(cors, {
-    origin: ['http://localhost:3000', 'http://127.0.0.1:3000'],
-});
-
+// Security headers
 fastify.register(helmet);
 
-// Health check route
-fastify.get('/health', async () => {
-    return { status: 'ok', timestamp: new Date().toISOString() };
-});
+// CORS
+fastify.register(cors, { origin: ORIGIN });
 
-// API routes
-fastify.get('/api/health', async () => {
-    return {
-        status: 'ok',
-        timestamp: new Date().toISOString(),
-        service: 'SwissGrid API',
-        version: '1.0.0',
-    };
-});
-
-fastify.get('/api/hello', async () => {
-    return {
-        message: 'Hello from SwissGrid API!',
-        tech: {
-            server: 'Node.js 18 + Fastify',
-            database: 'MongoDB',
-            language: 'TypeScript',
+// Swagger/OpenAPI v3
+fastify.register(fastifySwagger, {
+    openapi: {
+        info: {
+            title: 'SwissGrid API',
+            description: 'API documentation for SwissGrid',
+            version: '1.0.0',
         },
-    };
+        servers: [{ url: `http://${HOST}:${PORT}` }],
+    },
 });
 
-// Start server
+// Swagger UI at /docs
+fastify.register(fastifySwaggerUi, { routePrefix: '/docs' });
+
+// Health check endpoint
+fastify.get(
+    '/health',
+    {
+        schema: {
+            description: 'Basic health check',
+            tags: ['Health'],
+            response: {
+                200: {
+                    type: 'object',
+                    properties: {
+                        status: { type: 'string' },
+                        timestamp: { type: 'string', format: 'date-time' },
+                    },
+                },
+            },
+        },
+    },
+    async () => {
+        return { status: 'ok', timestamp: new Date().toISOString() };
+    }
+);
+
+// API health check
+fastify.get(
+    '/api/health',
+    {
+        schema: {
+            description: 'API health check',
+            tags: ['Health'],
+            response: {
+                200: {
+                    type: 'object',
+                    properties: { status: { type: 'string' } },
+                },
+            },
+        },
+    },
+    async () => {
+        return { status: 'ok' };
+    }
+);
+
+// Attach Socket.IO to Fastify server
+const io = new SocketIOServer(fastify.server, { cors: { origin: ORIGIN } });
+io.on('connection', socket => {
+    socket.on('ping', () => socket.emit('pong'));
+});
+
+// Start the server
 const start = async () => {
     try {
         // Connect to MongoDB
-        await connectToDatabase();
+        // await connectToDatabase();
 
-        // Start the server
-        await fastify.listen({ port: 5000, host: '0.0.0.0' });
-        console.log('🚀 Server is running on http://localhost:5000');
+        // Start listening
+        await fastify.listen({ port: PORT, host: HOST });
+
+        fastify.log.info(`Server listening on http://${HOST}:${PORT}`);
+        fastify.log.info(`Swagger docs at http://${HOST}:${PORT}/docs`);
     } catch (err) {
         fastify.log.error(err);
         process.exit(1);
