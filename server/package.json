@@ -10,6 +10,7 @@
         "test": "jest",
         "test:watch": "jest --watch",
         "test:coverage": "jest --coverage",
+        "bench": "ts-node bench/movegen.bench.ts",
         "lint": "eslint \"src/**/*.{js,ts}\" --report-unused-disable-directives --max-warnings 0",
         "lint:fix": "eslint \"src/**/*.{js,ts}\" --fix",
         "format": "prettier --write \"src/**/*.{js,ts}\"",
@@ -19,10 +20,10 @@
         "node": ">=18.0.0"
     },
     "dependencies": {
-        "fastify": "^4.26.2",
-        "mongodb": "^6.3.0",
         "@fastify/cors": "^9.0.1",
-        "@fastify/helmet": "^11.1.1"
+        "@fastify/helmet": "^11.1.1",
+        "fastify": "^4.26.2",
+        "mongodb": "^6.3.0"
     },
     "devDependencies": {
         "@types/jest": "^29.5.12",
@@ -36,6 +37,7 @@
         "jest": "^29.7.0",
         "prettier": "^3.2.5",
         "ts-jest": "^29.1.2",
+        "ts-node": "^10.9.2",
         "tsx": "^4.7.1",
         "typescript": "^5.3.3"
     }
